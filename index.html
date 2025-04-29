@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Autism Detection Application</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', sans-serif; background: linear-gradient(to right, #667eea, #764ba2); color: #fff; min-height: 100vh; display: flex; flex-direction: column; }
+    header { text-align: center; padding: 20px; font-size: 2rem; font-weight: bold; }
+    main { flex: 1; display: flex; flex-direction: row; justify-content: center; align-items: flex-start; padding: 20px; gap: 20px; flex-wrap: wrap; }
+    .left-panel, .right-panel { background: rgba(255, 255, 255, 0.1); border-radius: 15px; padding: 25px; box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.18); width: 100%; max-width: 450px; }
+    .left-panel h2, .right-panel h2 { margin-bottom: 10px; font-size: 1.3rem; }
+    input[type="file"], input[type="text"], button { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 10px; border: none; font-size: 1rem; }
+    button { background: #ff6b6b; color: white; cursor: pointer; transition: 0.3s; }
+    button:hover { background: #ff4757; transform: translateY(-2px); box-shadow: 0 4px 15px rgba(255, 71, 87, 0.6); }
+    #result { font-size: 1.1rem; text-align: center; margin-top: 10px; }
+    footer { text-align: center; padding: 15px 0; background: rgba(255, 255, 255, 0.05); font-size: 0.9rem; color: #e0e0e0; }
+    video, audio, img { width: 100%; margin-bottom: 10px; border-radius: 10px; }
+    @media (max-width: 768px) { main { flex-direction: column; align-items: center; } .left-panel, .right-panel { max-width: 90%; } }
+  </style>
+</head>
+
+<body>
+
+  <header>AUTISM DETECTION APPLICATION</header>
+
+  <main>
+    <div class="left-panel">
+      <h2>Patient Name :</h2>
+      <input type="text" id="nameInput" placeholder="Enter Name">
+
+      <h2>Patient Age :</h2>
+      <input type="text" id="ageInput" placeholder="Enter Age">
+
+      <h2>Upload Image:</h2>
+      <input type="file" id="uploadImage" accept="image/*">
+
+      <h2>Or Capture Image:</h2>
+      <button onclick="captureImage()">Capture Image</button>
+      <video id="camera" autoplay playsinline style="display:none;"></video>
+      <canvas id="canvas" style="display:none;"></canvas>
+      <img id="capturedPhoto" src="" alt="Captured Image" style="display:none;">
+
+      <h2>Upload Audio:</h2>
+      <input type="file" id="uploadAudio" accept="audio/*">
+
+      <h2>Or Record Audio:</h2>
+      <button onclick="startRecording()">Start Recording</button>
+      <button onclick="stopRecording()">Stop Recording</button>
+      <audio id="recordedAudio" controls style="display:none;"></audio>
+
+      <button onclick="predict()">Predict</button>
+    </div>
+
+    <div class="right-panel">
+      <h2>Prediction Result</h2>
+      <div id="result">Waiting for prediction...</div>
+    </div>
+  </main>
+
+
+  <script>
+    let mediaStream;
+    let mediaRecorder;
+    let audioChunks = [];
+    let recordedBlob;
+
+    async function captureImage() {
+      const camera = document.getElementById('camera');
+      const canvas = document.getElementById('canvas');
+      const capturedPhoto = document.getElementById('capturedPhoto');
+
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        camera.srcObject = mediaStream;
+        camera.style.display = "block";
+
+        setTimeout(() => {
+          const context = canvas.getContext('2d');
+          canvas.width = camera.videoWidth;
+          canvas.height = camera.videoHeight;
+          context.drawImage(camera, 0, 0);
+          camera.style.display = "none";
+          capturedPhoto.src = canvas.toDataURL('image/png');
+          capturedPhoto.style.display = "block";
+          mediaStream.getTracks().forEach(track => track.stop());
+        }, 3000); // Capture after 3 seconds
+      } catch (error) {
+        alert('Error accessing camera: ' + error.message);
+      }
+    }
+
+    async function startRecording() {
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(mediaStream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = event => {
+          audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const audioURL = URL.createObjectURL(recordedBlob);
+          const recordedAudio = document.getElementById('recordedAudio');
+          recordedAudio.src = audioURL;
+          recordedAudio.style.display = "block";
+        };
+
+        mediaRecorder.start();
+      } catch (error) {
+        alert('Error accessing microphone: ' + error.message);
+      }
+    }
+
+    function stopRecording() {
+      if (mediaRecorder) {
+        mediaRecorder.stop();
+        mediaStream.getTracks().forEach(track => track.stop());
+      }
+    }
+
+    async function predict() {
+      const name = document.getElementById('nameInput').value;
+      const age = document.getElementById('ageInput').value;
+      const uploadImage = document.getElementById('uploadImage').files[0];
+      const uploadAudio = document.getElementById('uploadAudio').files[0];
+      const capturedPhoto = document.getElementById('capturedPhoto').src;
+      const recordedAudio = document.getElementById('recordedAudio').src;
+
+      if (!name || !age || (!uploadImage && capturedPhoto == "") || (!uploadAudio && recordedAudio == "")) {
+        document.getElementById('result').innerText = "⚠️ Please provide all required data!";
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('age', age);
+
+      let imageURL = "";
+
+      if (uploadImage) {
+        formData.append('image', uploadImage);
+        imageURL = URL.createObjectURL(uploadImage);
+      } else if (capturedPhoto) {
+        const blob = await (await fetch(capturedPhoto)).blob();
+        formData.append('image', blob, 'captured_image.png');
+        imageURL = capturedPhoto;
+      }
+
+      if (uploadAudio) {
+        formData.append('audio', uploadAudio);
+      } else if (recordedBlob) {
+        formData.append('audio', recordedBlob, 'recorded_audio.webm');
+      }
+
+      try {
+        const response = await fetch('/predict', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+
+        document.getElementById('result').innerHTML = `
+          ✅ Prediction: ${data.prediction} <br><br>
+          <img src="${imageURL}" alt="Uploaded Image" style="max-width:300px; border-radius:15px; box-shadow:0 4px 12px rgba(0,0,0,0.4); margin-top:15px;">
+        `;
+      } catch (error) {
+        document.getElementById('result').innerText = "❌ Prediction failed. Please try again!";
+        console.error('Error:', error);
+      }
+    }
+  </script>
+
+</body>
+</html>
